@@ -1,1 +1,0 @@
-# Introdu-o-programa-R
