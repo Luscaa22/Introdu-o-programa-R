@@ -1,54 +1,36 @@
-local SafetyHook = {}
-SafetyHook.__index = SafetyHook
+local SL = {}
+SL.Hooks = {}
 
-SafetyHook.Hooks = {}
-
-function SafetyHook:Hook(func, callback)
-    if type(func) ~= "function" then
-        error("Função inválida")
-    end
-
-    if type(callback) ~= "function" then
-        error("Callback inválido")
-    end
-
-    if self.Hooks[func] then
-        return self.Hooks[func]
-    end
+function SL:Hook(func, callback)
+    if type(func) ~= "function" then return end
+    if self.Hooks[func] then return self.Hooks[func] end
 
     local old
     old = hookfunction(func, function(...)
-        local ok, result = pcall(callback, old, ...)
+        local ok, res = pcall(callback, old, ...)
         if not ok then
             return old(...)
         end
-        return result
+        return res
     end)
 
     self.Hooks[func] = old
     return old
 end
 
-function SafetyHook:Unhook(func)
+function SL:RevertHook(func)
     local old = self.Hooks[func]
-    if not old then
-        return false
-    end
-
-    hookfunction(func, old)
-    self.Hooks[func] = nil
-    return true
-end
-
-function SafetyHook:UnhookAll()
-    for func, old in pairs(self.Hooks) do
+    if old then
         hookfunction(func, old)
+        self.Hooks[func] = nil
+        return true
     end
-    self.Hooks = {}
+    return false
 end
 
-function SafetyHook:IsHooked(func)
+function SL:VerifyFunctionIntegrity(func)
+    if type(func) ~= "function" then return false end
     return self.Hooks[func] ~= nil
 end
 
-return SafetyHook
+return SL
