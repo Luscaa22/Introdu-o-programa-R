@@ -2,7 +2,7 @@ local SL = {}
 SL.__index = SL
 
 SL.Data = {}
-SL.Locked = false
+SL.Alive = true
 
 local function info(f)
     local ok, i = pcall(debug.getinfo, f)
@@ -10,7 +10,7 @@ local function info(f)
     return i
 end
 
-function SL:ProtectFunction(f)
+function SL:Protect(f)
     if type(f) ~= "function" then return end
     if self.Data[f] then return end
     local i = info(f)
@@ -25,8 +25,7 @@ function SL:ProtectFunction(f)
     }
 end
 
-function SL:VerifyFunctionIntegrity(f)
-    if type(f) ~= "function" then return false end
+function SL:Corrupted(f)
     local d = self.Data[f]
     if not d then return false end
     local i = info(f)
@@ -40,33 +39,29 @@ function SL:VerifyFunctionIntegrity(f)
     return false
 end
 
-function SL:ForceDominance(f, crash)
+function SL:Dominate(f, crash)
     if type(f) ~= "function" then return end
-    local original = f
+    local real = f
     hookfunction(f, newcclosure(function(...)
-        if SL.Locked then
-            task.spawn(crash, "Interceptacao detectada")
+        if not SL.Alive then
+            task.spawn(crash, "Hook externo detectado")
             while true do end
         end
-        return original(...)
+        return real(...)
     end))
 end
 
-function SL:ConsistencyTest(f, crash)
-    if type(f) ~= "function" then return end
-    local a = {pcall(f, {a=1})}
-    task.wait()
-    local b = {pcall(f, {a=1})}
-    if #a ~= #b then crash("HTTP inconsistente") end
-    for i = 1, #a do
-        if a[i] ~= b[i] then
-            crash("HTTP inconsistente")
+function SL:Watch(crash, interval)
+    task.spawn(function()
+        while true do
+            task.wait(interval or 0.2)
+            for f in pairs(self.Data) do
+                if self:Corrupted(f) then
+                    crash("HTTP Spy detectado")
+                end
+            end
         end
-    end
-end
-
-function SL:Seal()
-    SL.Locked = true
+    end)
 end
 
 return setmetatable({}, SL)
