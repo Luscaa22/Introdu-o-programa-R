@@ -1,3 +1,4 @@
+
 local SL = {}
 
 SL.Hooks = {}
@@ -5,6 +6,13 @@ SL.Fingerprints = {}
 
 function SL:Fingerprint(func)
     return tostring(func)
+end
+
+function SL:Register(func)
+    if type(func) ~= "function" then return end
+    if not self.Fingerprints[func] then
+        self.Fingerprints[func] = tostring(func)
+    end
 end
 
 function SL:Hook(func, callback)
@@ -16,7 +24,7 @@ function SL:Hook(func, callback)
         return self.Hooks[func]
     end
 
-    self.Fingerprints[func] = self:Fingerprint(func)
+    self:Register(func)
 
     local old
     old = hookfunction(func, function(...)
@@ -36,22 +44,15 @@ function SL:RevertHook(func)
     if old then
         hookfunction(func, old)
         self.Hooks[func] = nil
-        self.Fingerprints[func] = nil
         return true
     end
     return false
 end
 
 function SL:VerifyFunctionIntegrity(func)
-    if type(func) ~= "function" then
-        return false
-    end
-
+    if type(func) ~= "function" then return false end
     local fp = self.Fingerprints[func]
-    if not fp then
-        return false
-    end
-
+    if not fp then return false end
     return tostring(func) ~= fp
 end
 
@@ -64,7 +65,6 @@ function SL:UnhookAll()
         hookfunction(func, old)
     end
     self.Hooks = {}
-    self.Fingerprints = {}
 end
 
 return SL
