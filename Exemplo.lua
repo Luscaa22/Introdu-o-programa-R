@@ -1,44 +1,72 @@
 local SL = {}
 SL.__index = SL
 
-SL.Originals = {}
+SL.Data = {}
 
-local function iscc(f)
-    return iscclosure and iscclosure(f)
+local function info(f)
+    local ok, i = pcall(debug.getinfo, f)
+    if not ok then return nil end
+    return i
 end
 
 function SL:ProtectFunction(f)
     if type(f) ~= "function" then return end
-    if self.Originals[f] then return end
-    self.Originals[f] = {
+    if self.Data[f] then return end
+
+    local i = info(f)
+
+    self.Data[f] = {
         ref = f,
-        dump = (not iscc(f) and pcall(string.dump, f) and string.dump(f)) or nil,
-        iscclosure = iscc(f)
+        what = i and i.what,
+        source = i and i.source,
+        linedefined = i and i.linedefined,
+        nups = i and i.nups,
+        iscclosure = iscclosure and iscclosure(f),
+        env = getfenv(f)
     }
 end
 
 function SL:VerifyFunctionIntegrity(f)
     if type(f) ~= "function" then return false end
-    local d = self.Originals[f]
+    local d = self.Data[f]
     if not d then return false end
-    if f ~= d.ref then
+
+    local i = info(f)
+    if not i then return true end
+
+    if d.iscclosure and not (iscclosure and iscclosure(f)) then
         return true
     end
-    if not d.iscclosure and d.dump then
-        local ok, dumped = pcall(string.dump, f)
-        if ok and dumped ~= d.dump then
-            return true
-        end
+
+    if d.what ~= i.what then
+        return true
     end
+
+    if d.source ~= i.source then
+        return true
+    end
+
+    if d.linedefined ~= i.linedefined then
+        return true
+    end
+
+    if d.nups ~= i.nups then
+        return true
+    end
+
+    if getfenv(f) ~= d.env then
+        return true
+    end
+
     return false
 end
 
 function SL:RevertHook(f)
-    local d = self.Originals[f]
+    local d = self.Data[f]
     if not d then return false end
-    for _, v in pairs(getgc(true)) do
+    for k, v in pairs(getgenv()) do
         if v == f then
-            rawset(getfenv(), _, d.ref)
+            rawset(getgenv(), k, d.ref)
         end
     end
     return true
