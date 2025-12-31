@@ -1,47 +1,79 @@
 local SL = {}
+SL.__index = SL
+
+SL.Originals = {}
 SL.Hooks = {}
-SL.Fingerprints = {}
 
-function SL:Register(func)
-    if type(func) == "function" and not self.Fingerprints[func] then
-        self.Fingerprints[func] = tostring(func)
-    end
+local function isCClosure(func)
+    return iscclosure and iscclosure(func)
 end
 
-function SL:Hook(func, callback)
+function SL:ProtectFunction(func)
     if type(func) ~= "function" then return end
-    if self.Hooks[func] then return self.Hooks[func] end
-
-    self:Register(func)
-
-    local old
-    old = hookfunction(func, function(...)
-        local ok, res = pcall(callback, old, ...)
-        if not ok then
-            return old(...)
-        end
-        return res
-    end)
-
-    self.Hooks[func] = old
-    return old
-end
-
-function SL:RevertHook(func)
-    local old = self.Hooks[func]
-    if old then
-        hookfunction(func, old)
-        self.Hooks[func] = nil
-        return true
-    end
-    return false
+    if self.Originals[func] then return end
+    self.Originals[func] = {
+        ref = func,
+        dump = (not isCClosure(func) and string.dump(func)) or nil,
+        iscclosure = isCClosure(func)
+    }
 end
 
 function SL:VerifyFunctionIntegrity(func)
     if type(func) ~= "function" then return false end
-    local fp = self.Fingerprints[func]
-    if not fp then return false end
-    return tostring(func) ~= fp
+    local data = self.Originals[func]
+    if not data then return false end
+    if func ~= data.ref then
+        return true
+    end
+    if not data.iscclosure then
+        local ok, dumped = pcall(string.dump, func)
+        if ok and dumped ~= data.dump then
+            return true
+        end
+    end
+    return false
 end
 
-return SL
+function SL:RevertHook(func)
+    local data = self.Originals[func]
+    if not data then return false end
+    for _, v in pairs(getgc(true)) do
+        if v == func then
+            rawset(getfenv(), _, data.ref)
+        end
+    end
+    return true
+end
+
+function SL:Hook(func, callback)
+    if type(func) ~= "function" then return end
+    if self.Hooks[func] then return end
+    self:ProtectFunction(func)
+    local old
+    old = hookfunction(func, newcclosure(function(...)
+        return callback(old, ...)
+    end))
+    self.Hooks[func] = old
+    return old
+end
+
+function SL:ProtectFunctions(funcs)
+    for _, f in pairs(funcs) do
+        if type(f) == "function" then
+            self:ProtectFunction(f)
+        end
+    end
+end
+
+hookfunction(hookfunction, newcclosure(function(...)
+    task.spawn(function()
+        while true do end
+    end)
+    local args = {...}
+    if typeof(args[1]) == "function" then
+        SL:RevertHook(args[1])
+    end
+    while true do end
+end))
+
+return setmetatable({}, SL)
